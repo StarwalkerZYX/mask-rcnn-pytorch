@@ -53,8 +53,8 @@ class MaskRCNN(nn.Module):
         self.train_rpn_only = bool(int(self.config['TRAIN']['TRAIN_RPN_ONLY']))
 
         resnet_layer = int(self.config['BACKBONE']['RESNET_LAYER'])
-        pooling_size_clsbbox = int(self.config['POOLING']['POOLING_SIZE_CLSBBOX'])
-        pooling_size_mask = int(self.config['POOLING']['POOLING_SIZE_MASK'])
+        self.pooling_size_clsbbox = int(self.config['POOLING']['POOLING_SIZE_CLSBBOX'])
+        self.pooling_size_mask = int(self.config['POOLING']['POOLING_SIZE_MASK'])
 
         if self.fpn_on:
             self.backbone_fpn = ResNetFPN(resnet_layer, pretrained=pretrained)
@@ -77,17 +77,17 @@ class MaskRCNN(nn.Module):
 
         if not self.train_rpn_only:
             # RoiAlign for cls and bbox head
-            self.roi_align_clsbbox = RoiAlign(grid_size=(pooling_size_clsbbox,
-                                                         pooling_size_clsbbox))
+            self.roi_align_clsbbox = RoiAlign(grid_size=(self.pooling_size_clsbbox,
+                                                         self.pooling_size_clsbbox))
             self.clsbbox_head = ClsBBoxHead(depth=self.depth_head,
                                             num_classes=num_classes)
             if self.mask_head_on:
                 # RoiAlign for mask head
-                self.roi_align_mask = RoiAlign(grid_size=(pooling_size_mask,
-                                                          pooling_size_mask))
+                self.roi_align_mask = RoiAlign(grid_size=(self.pooling_size_mask,
+                                                          self.pooling_size_mask))
                 self.mask_head = MaskHead(depth=self.depth_head,
-                                          pool_size=(pooling_size_mask,
-                                                     pooling_size_mask),
+                                          pool_size=(self.pooling_size_mask,
+                                                     self.pooling_size_mask),
                                           num_classes=num_classes)
         self.img_height = None
         self.img_width = None
@@ -155,7 +155,9 @@ class MaskRCNN(nn.Module):
             return result, rpn_loss
         else:  # train RPN + Predict heads together.
             if self.training or self.validating:
-                gen_targets = self._generate_targets(rois, gt_classes, gt_bboxes, gt_masks)
+                gen_targets = self._generate_targets(rois, gt_classes, gt_bboxes, gt_masks,
+                                                     mask_size=(self.pooling_size_mask * 2,
+                                                                self.pooling_size_mask * 2))
                 rois_sampled, cls_targets, bbox_targets, mask_targets = gen_targets
                 rois_head = rois_sampled.view(-1, 6)  # [N, M, 6] -> [(NxM), 6]
                 rois_clsbbox, rois_mask = rois_head.clone(), rois_head.clone()
@@ -229,7 +231,7 @@ class MaskRCNN(nn.Module):
 
         return cls_prob, bbox_reg
 
-    def _generate_targets(self, proposals, gt_classes, gt_bboxes, gt_masks, mask_size=(14, 14)):
+    def _generate_targets(self, proposals, gt_classes, gt_bboxes, gt_masks, mask_size):
         """Generate Mask R-CNN targets, and corresponding rois.
 
         Args:
@@ -282,7 +284,8 @@ class MaskRCNN(nn.Module):
         proposals = torch.cat([proposals, gt_proposals])
 
         pos_index_prop = torch.nonzero(max_iou >= rois_pos_thresh).view(-1)
-        neg_index_prop = torch.nonzero(max_iou < rois_neg_thresh).view(-1)
+        # neg_index_prop = torch.nonzero(max_iou < rois_neg_thresh).view(-1)
+        neg_index_prop = torch.nonzero((max_iou > 0.1) & (max_iou < 0.5)).view(-1)
 
         pos_num = pos_index_prop.size(0)
         neg_num = neg_index_prop.size(0)
@@ -550,8 +553,10 @@ class MaskRCNN(nn.Module):
                 px1, py1, px2, py2 = props_refined[i, 2:].int()
                 mask_height, mask_width = py2 - py1, px2 - px1
                 mask = mask_prob[i][cls_ids[i]]
-                mask = Variable(mask.unsqueeze(0), requires_grad=False)
-                mask_resize = F.adaptive_avg_pool2d(mask, (mask_height, mask_width)).data
+                mask = Variable(mask.unsqueeze(0).unsqueeze(0), requires_grad=False)
+                mask_resize = F.upsample(mask, size=(mask_height, mask_width),
+                                         mode='bilinear').data
+                mask_resize = mask_resize.squeeze(0).squeeze(0)
                 mask_threshold = float(self.config['TEST']['MASK_THRESH'])
                 mask_resize = mask_resize >= mask_threshold
                 mask_pred = mask_prob.new(self.img_height, self.img_width).zero_()
@@ -609,10 +614,11 @@ class MaskRCNN(nn.Module):
             x2 = int(max(min(img_width, x2), 0))
             y1 = int(max(min(img_height, y1), 0))
             y2 = int(max(min(img_height, y2), 0))
-            mask = Variable(gt_masks[i, y1:y2, x1:x2], requires_grad=False)
-            # mask.unsqueeze(0) work around F.adaptive_avg_pool2d silent crash.
-            mask_resize = F.adaptive_avg_pool2d(mask.unsqueeze(0), output_size=mask_size)
-            mask_targets[i, :, :] = mask_resize.data[0]
+            mask = Variable(gt_masks[i, y1:y2, x1:x2].unsqueeze(0).unsqueeze(0),
+                            requires_grad=False)
+            mask_resize = F.upsample(mask, size=mask_size, mode='bilinear').data
+            mask_resize = mask_resize.squeeze(0).squeeze(0)
+            mask_targets[i, :, :] = mask_resize
 
         return mask_targets
 

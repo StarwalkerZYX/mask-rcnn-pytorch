@@ -18,6 +18,7 @@ class HeadCommon(nn.Module):
         assert os.path.exists(config_path), "config.ini not exists!"
         self.config.read(config_path)
         self.backbone_type = self.config['BACKBONE']['BACKBONE_TYPE']
+        self.pooling_size_clsbbox = int(self.config['POOLING']['POOLING_SIZE_CLSBBOX'])
         _pretrained = True if pretrained is not None else False
         assert self.backbone_type in ['resnet', 'vgg16']
         if self.backbone_type == 'resnet':
@@ -48,12 +49,11 @@ class HeadCommon(nn.Module):
         if self.backbone_type == 'resnet':
             x = self.resnet_c5(x)
             if not is_mask:
-                x = self.resnet_c5_avg(x)
-                x = F.relu(x)
+                x = F.avg_pool2d(x, kernel_size=(self.pooling_size_clsbbox,
+                                                 self.pooling_size_clsbbox))
                 x = x.view(x.size(0), -1)
         elif self.backbone_type == 'vgg16':
             x = x.view(x.size(0), -1)
             x = self.vgg_fc(x)
-            x = F.relu(x)
 
         return x

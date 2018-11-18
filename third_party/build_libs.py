@@ -13,7 +13,11 @@ def build_nms(arch):
                  + "-x cu -Xcompiler -fPIC {}".format(arch)
     print(build_cuda)
     build_ext = sys.executable + " " + os.path.join(curr_dir, "nms", "build.py")
+
+    print("To call: "+build_cuda)
     subprocess.call(build_cuda, shell=True)
+
+    print("To call："+build_ext)
     subprocess.call(build_ext, shell=True)
 
 
@@ -21,7 +25,7 @@ def build_nms(arch):
 def build_roi_align(arch):
     cuda_src = os.path.join(curr_dir, "roi_align", "src", "cuda", "crop_and_resize_kernel.cu")
     cuda_out = os.path.join(curr_dir, "roi_align", "src", "cuda", "crop_and_resize_kernel.cu.o")
-    build_cuda = "/usr/local/cuda/bin/nvcc -c -o " + cuda_out + " " + cuda_src + " " \
+    build_cuda = "C:Program Files/NVIDIA GPU Computing Toolkit\CUDA/v9.0/bin/nvcc.exe -c -o " + cuda_out + " " + cuda_src + " " \
                  + "-x cu -Xcompiler -fPIC {}".format(arch)
     print(build_cuda)
     build_ext = sys.executable + " " + os.path.join(curr_dir, "roi_align", "build.py")

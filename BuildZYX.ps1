@@ -11,6 +11,17 @@ nvcc -c -o nms_kernel.cu.o nms_kernel.cu -x cu -Xcompiler -fPIC -arch=sm_35
 
 cd ../../
 
-#$PythonExe = 'C:\Users\zhou.yongxin\AppData\Local\conda\conda\envs\PyTorch\python.exe'
-$PythonExe = 'e:\Anaconda3\envs\pytorch\python.exe'
+$PythonExeCandi = 'C:\Users\zhou.yongxin\AppData\Local\conda\conda\envs\PyTorch\python.exe', 'e:\Anaconda3\envs\pytorch\python.exe'
+$PythonExe = ''
+foreach ($s in $PythonExeCandi)
+{
+    if (Test-Path $s)
+    {
+        $PythonExe = $s
+        break
+    }
+}
+
+'To use python in :', $PythonExe
+
 &$PythonExe build.py
